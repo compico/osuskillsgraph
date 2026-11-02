@@ -1,0 +1,11 @@
+{
+  "name": "osuskillsgraph",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "tosu overlay: per-skill difficulty graph of the current beatmap, from go-osu",
+  "scripts": {
+    "test": "node --test \"test/**/*.test.js\""
+  },
+  "license": "MIT"
+}
