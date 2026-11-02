@@ -1,0 +1,8 @@
+Usecase: ingame, obs-overlay
+Name: osu!skills graph
+Version: 0.1
+Author: compico
+CompatibleWith: tosu
+Resolution: 520x220
+authorLinks: https://github.com/compico
+Notes: Difficulty of every skill (stamina, tenacity, agility, precision, reading, memory, accuracy, reaction) over the current beatmap, with the current moment marked. Needs go-osu running (https://github.com/compico/go-osu), see README.
