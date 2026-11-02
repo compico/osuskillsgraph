@@ -3,7 +3,6 @@ import { test } from 'node:test'
 import {
   ALPHA_CUMULATIVE,
   ALPHA_MIN,
-  NORMALIZE_FLOOR,
   endTime,
   lineAlpha,
   normalizeMods,
@@ -26,37 +25,35 @@ test('normalizeMods resolves tosu names to what go-osu accepts', () => {
   assert.equal(normalizeMods('HDHR'), 'HDHR')
 })
 
-test('prepareSkills normalises every skill to its own peak', () => {
+test('all skills share one height: 1 is the highest value any of them reaches', () => {
   const skills = prepareSkills({
     speed: 1,
     stamina: pts([0, 100], [1000, 250], [2000, 50]),
-    agility: pts([0, 1000], [1000, 500]),
+    accuracy: pts([0, 1000], [1000, 500]),
     reading: [],
     reaction: pts([0, 0], [10, 0]), // all zeros: nothing to draw
   })
 
-  assert.deepEqual(skills.map((s) => s.key), ['stamina', 'agility'])
-  assert.deepEqual(skills[0].points.map((p) => p.value), [0.4, 1, 0.2])
+  assert.deepEqual(skills.map((s) => s.key), ['stamina', 'accuracy'])
+  assert.deepEqual(skills[0].points.map((p) => p.value), [0.1, 0.25, 0.05])
   assert.deepEqual(skills[1].points.map((p) => p.value), [1, 0.5])
+  // Each skill's own peak on that scale: 1 for the strongest.
+  assert.equal(skills[0].top, 0.25)
+  assert.equal(skills[1].top, 1)
   assert.equal(skills[0].peak, 250)
-  assert.equal(skills[1].peak, 1000)
 })
 
-test('a skill that is hardly there is not stretched to the full height', () => {
+test('a skill that is hardly there stays low', () => {
   // Reading is 0-11 on most maps while the others are in the hundreds.
   const [stamina, reading] = prepareSkills({
     speed: 1,
     reading: pts([0, 2], [1000, 11]),
-    stamina: pts([0, 150], [1000, NORMALIZE_FLOOR]),
+    stamina: pts([0, 150], [1000, 1000]),
   })
 
-  assert.deepEqual(reading.points.map((p) => p.value), [2 / NORMALIZE_FLOOR, 11 / NORMALIZE_FLOOR])
-  assert.ok(Math.max(...reading.points.map((p) => p.value)) < 0.2)
-  // A skill above the floor still reaches 1.
   assert.equal(Math.max(...stamina.points.map((p) => p.value)), 1)
-  // A skill exactly at the floor is divided by itself.
-  const [edge] = prepareSkills({ speed: 1, agility: pts([0, NORMALIZE_FLOOR]) })
-  assert.equal(edge.points[0].value, 1)
+  assert.ok(Math.max(...reading.points.map((p) => p.value)) <= 0.011)
+  assert.equal(reading.top, 0.011)
 })
 
 test('prepareSkills puts the time on the beatmap timeline', () => {
@@ -109,22 +106,23 @@ test('valueNear is the value of the nearest point', () => {
   assert.equal(valueNear(pts([100, 3]), 5), 3)
 })
 
-test('lineAlpha: the closer to its own peak, the brighter', () => {
-  const skill = { points: pts([0, 1], [1000, 0.5], [2000, 0.1]) }
+test('lineAlpha fades against the skill\'s own peak, not the highest skill', () => {
+  // A skill that peaks at 0.4 of the full height is at its peak when it reaches 0.4.
+  const skill = { top: 0.4, points: pts([0, 0.4], [1000, 0.2], [2000, 0.04]) }
 
-  assert.equal(lineAlpha(skill, 0), 1) // at its peak
+  assert.equal(lineAlpha(skill, 0), 1) // at its own peak
   const half = lineAlpha(skill, 1000)
   const low = lineAlpha(skill, 2000)
   assert.ok(low < half && half < 1, `${low} < ${half} < 1`)
   assert.ok(low > ALPHA_MIN)
-  // The fade is the square of the ratio: half the peak is a quarter of the way up.
+  // The fade is the square of the ratio: half its peak is a quarter of the way up.
   assert.ok(Math.abs(half - (ALPHA_MIN + (1 - ALPHA_MIN) * 0.25)) < 1e-12)
-  assert.equal(lineAlpha({ points: pts([0, 0]) }, 0), ALPHA_MIN) // nothing there at all
-  assert.equal(lineAlpha({ points: [] }, 0), ALPHA_MIN)
+  assert.equal(lineAlpha({ top: 1, points: pts([0, 0]) }, 0), ALPHA_MIN) // nothing there at all
+  assert.equal(lineAlpha({ top: 1, points: [] }, 0), ALPHA_MIN)
 })
 
 test('lineAlpha: a cumulative line has a constant opacity', () => {
-  const memory = { cumulative: true, points: pts([0, 0.1], [1000, 1]) }
+  const memory = { cumulative: true, top: 1, points: pts([0, 0.1], [1000, 1]) }
   assert.equal(lineAlpha(memory, 0), ALPHA_CUMULATIVE)
   assert.equal(lineAlpha(memory, 99999), ALPHA_CUMULATIVE)
 })

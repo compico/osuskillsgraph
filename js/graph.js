@@ -13,14 +13,6 @@ export const SKILLS = [
   { key: 'reaction', label: 'Reaction', color: '#b0bec5' },
 ]
 
-/**
- * A skill is stretched to the full height only if its peak is at least this
- * many points. Below that it is divided by this instead, so a skill that is
- * hardly there (reading is 0-11 on most maps, the others are in the hundreds)
- * stays a low line and does not look as hard as the rest.
- */
-export const NORMALIZE_FLOOR = 100
-
 /** Opacity of a line that is far below its peak / of a cumulative line. */
 export const ALPHA_MIN = 0.18
 export const ALPHA_CUMULATIVE = 0.5
@@ -50,18 +42,23 @@ export function normalizeMods(name) {
 
 /**
  * Prepares a /strains response for drawing: every skill's points on the
- * beatmap's own timeline (time × speed, which is the timeline tosu reports)
- * normalised to the skill's own peak (but see NORMALIZE_FLOOR), so each line
- * spans 0..1 whatever the skill's scale. `step` is the width of a window in
- * ms for the skills that are on or off (tenacity: a stream, then none) and are
- * drawn as steps; 0 for the others. Skills without a curve (or with a curve of
- * zeros) are left out.
+ * beatmap's own timeline (time × speed, which is the timeline tosu reports).
+ *
+ * The height is shared by all skills: 1 is the highest value any skill reaches
+ * on this map (accuracy at 1000 while the others peak lower: 1000 is the full
+ * height for all of them), so the lines stay comparable and a skill that is
+ * hardly there stays a low line. `top` is a skill's own peak on that scale (1
+ * for the strongest skill), which is what its line fades against. `step` is
+ * the width of a window in ms for the skills that are on or off (tenacity: a
+ * stream, then none) and are drawn as steps; 0 for the others. Skills without
+ * a curve (or with a curve of zeros) are left out.
  */
 export function prepareSkills(response) {
   const speed = response?.speed > 0 ? response.speed : 1
   const window = response?.window > 0 ? response.window : 0
-  const prepared = []
 
+  const found = []
+  let highest = 0
   for (const skill of SKILLS) {
     const raw = response?.[skill.key]
     if (!Array.isArray(raw) || raw.length === 0) continue
@@ -70,15 +67,17 @@ export function prepareSkills(response) {
     for (const p of raw) peak = Math.max(peak, p.value)
     if (!(peak > 0)) continue
 
-    const divisor = Math.max(peak, NORMALIZE_FLOOR)
-    prepared.push({
-      ...skill,
-      peak,
-      step: skill.step ? window : 0,
-      points: raw.map((p) => ({ time: p.time * speed, value: p.value / divisor })),
-    })
+    highest = Math.max(highest, peak)
+    found.push({ skill, raw, peak })
   }
-  return prepared
+
+  return found.map(({ skill, raw, peak }) => ({
+    ...skill,
+    peak,
+    top: peak / highest,
+    step: skill.step ? window : 0,
+    points: raw.map((p) => ({ time: p.time * speed, value: p.value / highest })),
+  }))
 }
 
 /** End of the drawn time axis: the last point of any curve. */
@@ -122,17 +121,17 @@ export function valueNear(points, time) {
 }
 
 /**
- * Opacity of a skill's line at the current time. The values are normalised, so
- * 1 is the skill's own peak: a line whose current value is below it fades with
- * the square of how far below. The lines that are hard at this very moment
- * stand out, the rest do not blur the graph. A cumulative curve (memory) has no
- * meaningful "below its peak", so it has a constant, medium opacity.
+ * Opacity of a skill's line at the current time: a line whose current value is
+ * below the skill's own peak (`top`) fades with the square of how far below.
+ * The lines that are hard at this very moment stand out, the rest do not blur
+ * the graph. A cumulative curve (memory) has no meaningful "below its peak", so
+ * it has a constant, medium opacity.
  */
 export function lineAlpha(skill, time) {
   if (skill.cumulative) return ALPHA_CUMULATIVE
 
   const v = valueNear(skill.points, time)
   if (v === null) return ALPHA_MIN
-  const ratio = Math.min(1, Math.max(0, v))
+  const ratio = skill.top > 0 ? Math.min(1, Math.max(0, v / skill.top)) : 0
   return ALPHA_MIN + (1 - ALPHA_MIN) * ratio * ratio
 }
