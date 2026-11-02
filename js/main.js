@@ -1,4 +1,4 @@
-import { SKILLS, ALPHA_MIN, endTime, lineAlpha, normalizeMods, prepareSkills, toSteps, valueNear } from './graph.js'
+import { SKILLS, ALPHA_MIN, endTime, lineAlpha, normalizeMods, prepareSkills, smoothSegments, smoothValueAt, toSteps, valueNear } from './graph.js'
 
 const cfg = resolveConfig()
 
@@ -140,9 +140,17 @@ function draw() {
     ctx.globalAlpha = alpha
     ctx.setLineDash(skill.cumulative ? [4, 3] : [])
 
-    const line = skill.step ? toSteps(skill.points, skill.step) : skill.points
     ctx.beginPath()
-    line.forEach((p, i) => (i === 0 ? ctx.moveTo(x(p.time), y(p.value)) : ctx.lineTo(x(p.time), y(p.value))))
+    if (skill.step) {
+      // On or off: steps, a slope would show something that is not there.
+      toSteps(skill.points, skill.step).forEach((p, i) => (i === 0 ? ctx.moveTo(x(p.time), y(p.value)) : ctx.lineTo(x(p.time), y(p.value))))
+    } else {
+      const first = skill.points[0]
+      ctx.moveTo(x(first.time), y(first.value))
+      for (const s of smoothSegments(skill.points)) {
+        ctx.bezierCurveTo(x(s.c1.time), y(s.c1.value), x(s.c2.time), y(s.c2.value), x(s.to.time), y(s.to.value))
+      }
+    }
     ctx.stroke()
   }
   ctx.setLineDash([])
@@ -159,7 +167,8 @@ function draw() {
 
   // A dot on every skill at the moment, as bright as its line.
   for (const { skill, alpha } of ordered) {
-    const v = valueNear(skill.points, live.time)
+    // On the line itself: the smooth curve, the steps for tenacity.
+    const v = skill.step ? valueNear(skill.points, live.time) : smoothValueAt(skill.points, live.time)
     if (v === null) continue
     ctx.globalAlpha = Math.max(alpha, ALPHA_MIN)
     ctx.fillStyle = skill.color

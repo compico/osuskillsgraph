@@ -3,6 +3,7 @@
 A [tosu](https://github.com/tosuapp/tosu) overlay that draws the difficulty of every skill over the course of the beatmap you are playing, with the current moment marked. The skills are the ones [go-osu](https://github.com/compico/go-osu) calculates: stamina, tenacity, agility, precision, reading, memory (with FL), accuracy and reaction.
 
 - **One shared height for all skills**: the full height is the highest value any skill reaches on this map (if accuracy peaks at 1000 and the others lower, 1000 is 100% for all of them). Lines stay comparable, and a skill that is hardly there (reading is 0–11 on most maps) stays a low line. (go-osu's own beatmap card shows the same absolute values.)
+- **Smooth lines**: the curves are drawn as smooth waves through the points (a monotone spline, so a peak is exactly the value of its point and a line never dips below zero); tenacity stays steps.
 - **One point per 5 seconds**: the curves are made of the hardest moment of each 5 s window (`window` in `config.js`), because per-note values are far too noisy to read. Tenacity is on or off, so it is drawn as steps.
 - **Lines fade with distance from their own peak**: a skill that is at its hardest right now is bright, one that is easy at this moment fades, so the lines do not blur into each other. Memory is cumulative (it adds up over the map), so it is dashed with a constant opacity; tenacity shows the streams.
 - Mods follow the game (DT/NC, HR, HD, FL…); mods that do not change difficulty are ignored.

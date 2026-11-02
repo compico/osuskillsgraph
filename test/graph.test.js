@@ -7,6 +7,8 @@ import {
   lineAlpha,
   normalizeMods,
   prepareSkills,
+  smoothSegments,
+  smoothValueAt,
   toSteps,
   valueNear,
 } from '../js/graph.js'
@@ -125,4 +127,81 @@ test('lineAlpha: a cumulative line has a constant opacity', () => {
   const memory = { cumulative: true, top: 1, points: pts([0, 0.1], [1000, 1]) }
   assert.equal(lineAlpha(memory, 0), ALPHA_CUMULATIVE)
   assert.equal(lineAlpha(memory, 99999), ALPHA_CUMULATIVE)
+})
+
+// Evaluates the cubic Bézier of a segment that starts at `from`.
+const bezier = (from, s, u) => {
+  const mix = (a, b, c, d) => (1 - u) ** 3 * a + 3 * (1 - u) ** 2 * u * b + 3 * (1 - u) * u ** 2 * c + u ** 3 * d
+  return {
+    time: mix(from.time, s.c1.time, s.c2.time, s.to.time),
+    value: mix(from.value, s.c1.value, s.c2.value, s.to.value),
+  }
+}
+
+test('smoothSegments goes through every point and never overshoots', () => {
+  // Peaks, dips, a flat stretch, a sharp rise, a drop to zero.
+  const curve = pts([0, 0], [1000, 5], [2000, 1], [3000, 1], [4000, 1], [5000, 9], [6000, 8.5], [7000, 0], [8000, 0], [9000, 3])
+  const segments = smoothSegments(curve)
+
+  assert.equal(segments.length, curve.length - 1)
+  segments.forEach((s, i) => {
+    assert.deepEqual(s.to, curve[i + 1]) // through every point
+    const low = Math.min(curve[i].value, curve[i + 1].value)
+    const high = Math.max(curve[i].value, curve[i + 1].value)
+    for (let u = 0; u <= 1; u += 0.05) {
+      const p = bezier(curve[i], s, u)
+      assert.ok(p.value >= low - 1e-9 && p.value <= high + 1e-9, `segment ${i} at ${u}: ${p.value} outside [${low}, ${high}]`)
+      assert.ok(p.time >= curve[i].time - 1e-9 && p.time <= curve[i + 1].time + 1e-9)
+    }
+  })
+})
+
+test('smoothSegments is level at a peak and at a dip, and flat where the data is flat', () => {
+  const curve = pts([0, 0], [1000, 5], [2000, 1], [3000, 1], [4000, 4])
+  const segments = smoothSegments(curve)
+
+  // At the peak (point 1) the control points on both sides are at its height.
+  assert.equal(segments[0].c2.value, 5)
+  assert.equal(segments[1].c1.value, 5)
+  // The dip at 2000 touches the flat stretch: level there too, and the stretch stays flat.
+  assert.equal(segments[1].c2.value, 1)
+  assert.deepEqual([segments[2].c1.value, segments[2].c2.value], [1, 1])
+})
+
+test('smoothSegments keeps a curve that is a straight line straight', () => {
+  const segments = smoothSegments(pts([0, 0], [1000, 1], [2000, 2], [3000, 3]))
+  for (const s of segments) {
+    assert.ok(Math.abs(s.c1.value - s.c1.time / 1000) < 1e-9)
+    assert.ok(Math.abs(s.c2.value - s.c2.time / 1000) < 1e-9)
+  }
+})
+
+test('smoothSegments handles tiny and degenerate input', () => {
+  assert.deepEqual(smoothSegments([]), [])
+  assert.deepEqual(smoothSegments(pts([0, 1])), [])
+  assert.equal(smoothSegments(pts([0, 1], [1000, 3])).length, 1)
+  // Points at the same time do not produce NaN.
+  for (const s of smoothSegments(pts([0, 1], [0, 3], [1000, 2]))) {
+    for (const v of [s.c1.time, s.c1.value, s.c2.time, s.c2.value]) assert.ok(Number.isFinite(v))
+  }
+})
+
+test('smoothValueAt is on the curve: the points\' values at their times, the curve between', () => {
+  const curve = pts([0, 0], [1000, 5], [2000, 1], [3000, 1], [4000, 4])
+  for (const p of curve) assert.ok(Math.abs(smoothValueAt(curve, p.time) - p.value) < 1e-6, `at ${p.time}`)
+
+  // Compare with points sampled from the Bézier segments themselves.
+  const segments = smoothSegments(curve)
+  segments.forEach((s, i) => {
+    for (let u = 0.1; u < 1; u += 0.2) {
+      const p = bezier(curve[i], s, u)
+      assert.ok(Math.abs(smoothValueAt(curve, p.time) - p.value) < 1e-6)
+    }
+  })
+
+  // Before the first and after the last point it holds the end values; empty is null.
+  assert.equal(smoothValueAt(curve, -500), 0)
+  assert.equal(smoothValueAt(curve, 99999), 4)
+  assert.equal(smoothValueAt([], 0), null)
+  assert.equal(smoothValueAt(pts([10, 7]), 500), 7)
 })

@@ -135,3 +135,99 @@ export function lineAlpha(skill, time) {
   const ratio = skill.top > 0 ? Math.min(1, Math.max(0, v / skill.top)) : 0
   return ALPHA_MIN + (1 - ALPHA_MIN) * ratio * ratio
 }
+
+/**
+ * Bézier segments of a smooth curve through the points (a monotone cubic
+ * Hermite spline, Fritsch–Carlson). Between two points the curve never goes
+ * above the higher or below the lower one, and at a peak or a dip it is level:
+ * round like a sine wave, but without overshoot, so a peak stays exactly the
+ * value of its point (the peaks are what the skills are made of) and a curve
+ * of non-negative values never dips below zero.
+ *
+ * Returns one segment per pair of neighbouring points, each the two control
+ * points and the end point of a cubic Bézier that starts at the previous point:
+ * { c1: {time, value}, c2: {time, value}, to: {time, value} }.
+ * Points must be in increasing time; fewer than two points give no segments.
+ */
+export function smoothSegments(points) {
+  const n = points.length
+  if (n < 2) return []
+
+  const dx = []
+  const slope = []
+  for (let i = 0; i < n - 1; i++) {
+    dx.push(points[i + 1].time - points[i].time)
+    slope.push(dx[i] > 0 ? (points[i + 1].value - points[i].value) / dx[i] : 0)
+  }
+
+  // Tangent at every point: the average of the neighbouring slopes, 0 at a peak
+  // or a dip, the one slope at the ends.
+  const tangent = new Array(n)
+  tangent[0] = slope[0]
+  tangent[n - 1] = slope[n - 2]
+  for (let i = 1; i < n - 1; i++) {
+    tangent[i] = slope[i - 1] * slope[i] <= 0 ? 0 : (slope[i - 1] + slope[i]) / 2
+  }
+
+  // Keep every tangent within three times the slopes around it (and a flat
+  // stretch flat): that is what rules out overshoot.
+  for (let i = 0; i < n - 1; i++) {
+    if (slope[i] === 0) {
+      tangent[i] = 0
+      tangent[i + 1] = 0
+      continue
+    }
+    const a = tangent[i] / slope[i]
+    const b = tangent[i + 1] / slope[i]
+    const size = Math.hypot(a, b)
+    if (size > 3) {
+      tangent[i] = (3 * a * slope[i]) / size
+      tangent[i + 1] = (3 * b * slope[i]) / size
+    }
+  }
+
+  const segments = []
+  for (let i = 0; i < n - 1; i++) {
+    const third = dx[i] / 3
+    segments.push({
+      c1: { time: points[i].time + third, value: points[i].value + tangent[i] * third },
+      c2: { time: points[i + 1].time - third, value: points[i + 1].value - tangent[i + 1] * third },
+      to: points[i + 1],
+    })
+  }
+  return segments
+}
+
+/**
+ * Height of the smooth curve of smoothSegments at `time` (clamped to the first
+ * and last point), so a marker can sit exactly on the line it belongs to.
+ * Null for an empty curve.
+ */
+export function smoothValueAt(points, time) {
+  if (points.length === 0) return null
+  if (points.length === 1 || time <= points[0].time) return points[0].value
+  if (time >= points[points.length - 1].time) return points[points.length - 1].value
+
+  // The segment the time is in.
+  let lo = 0
+  let hi = points.length - 1
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1
+    if (points[mid].time <= time) lo = mid
+    else hi = mid
+  }
+  const s = smoothSegments(points)[lo]
+
+  // The curve's time grows with the Bézier parameter: find the parameter by bisection.
+  const from = points[lo]
+  const at = (u, a, b, c, d) => (1 - u) ** 3 * a + 3 * (1 - u) ** 2 * u * b + 3 * (1 - u) * u ** 2 * c + u ** 3 * d
+  let a = 0
+  let b = 1
+  for (let i = 0; i < 30; i++) {
+    const u = (a + b) / 2
+    if (at(u, from.time, s.c1.time, s.c2.time, s.to.time) < time) a = u
+    else b = u
+  }
+  const u = (a + b) / 2
+  return at(u, from.value, s.c1.value, s.c2.value, s.to.value)
+}
