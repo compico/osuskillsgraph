@@ -5,8 +5,9 @@
 window.OSUSKILLSGRAPH_CONFIG = {
   // Where go-osu listens (http.port in its config.yml).
   goosu: 'http://127.0.0.1:3000',
-  // The curves are thinned to the strongest point per this many milliseconds.
-  window: 400,
+  // Width in milliseconds of the windows the curves are made of: each window is
+  // one point, the hardest moment in it. Smaller is noisier.
+  window: 5000,
   // Where tosu's websocket is. Empty: the host the overlay itself is served from.
   tosu: '',
 }

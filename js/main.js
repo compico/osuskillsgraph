@@ -1,4 +1,4 @@
-import { SKILLS, ALPHA_MIN, endTime, lineAlpha, normalizeMods, prepareSkills, splitSegments, valueAt } from './graph.js'
+import { SKILLS, ALPHA_MIN, endTime, lineAlpha, normalizeMods, prepareSkills, smoothSegments, smoothValueAt } from './graph.js'
 
 const cfg = resolveConfig()
 
@@ -19,7 +19,7 @@ function resolveConfig() {
   const q = new URLSearchParams(location.search)
   return {
     goosu: (q.get('goosu') ?? base.goosu ?? 'http://127.0.0.1:3000').replace(/\/+$/, ''),
-    window: Number(q.get('window') ?? base.window ?? 400),
+    window: Number(q.get('window') ?? base.window ?? 5000),
     tosu: q.get('tosu') ?? base.tosu ?? '',
   }
 }
@@ -140,12 +140,13 @@ function draw() {
     ctx.globalAlpha = alpha
     ctx.setLineDash(skill.cumulative ? [4, 3] : [])
 
-    for (const segment of skill.cumulative ? [skill.points] : splitSegments(skill.points)) {
-      ctx.beginPath()
-      segment.forEach((p, i) => (i === 0 ? ctx.moveTo(x(p.time), y(p.value)) : ctx.lineTo(x(p.time), y(p.value))))
-      if (segment.length === 1) ctx.lineTo(x(segment[0].time) + 3, y(segment[0].value))
-      ctx.stroke()
+    ctx.beginPath()
+    const first = skill.points[0]
+    ctx.moveTo(x(first.time), y(first.value))
+    for (const s of smoothSegments(skill.points)) {
+      ctx.bezierCurveTo(x(s.c1.time), y(s.c1.value), x(s.c2.time), y(s.c2.value), x(s.to.time), y(s.to.value))
     }
+    ctx.stroke()
   }
   ctx.setLineDash([])
 
@@ -161,7 +162,8 @@ function draw() {
 
   // A dot on every skill at the moment, as bright as its line.
   for (const { skill, alpha } of ordered) {
-    const v = valueAt(skill.points, live.time, skill.cumulative ? Infinity : undefined)
+    // On the line itself.
+    const v = smoothValueAt(skill.points, live.time)
     if (v === null) continue
     ctx.globalAlpha = Math.max(alpha, ALPHA_MIN)
     ctx.fillStyle = skill.color
