@@ -9,7 +9,6 @@ import {
   prepareSkills,
   smoothSegments,
   smoothValueAt,
-  toSteps,
   valueNear,
 } from '../js/graph.js'
 
@@ -68,30 +67,9 @@ test('prepareSkills puts the time on the beatmap timeline', () => {
   assert.deepEqual(prepareSkills(null), [])
 })
 
-test('only tenacity is drawn as steps, one window wide', () => {
-  const skills = prepareSkills({
-    speed: 1,
-    window: 5000,
-    tenacity: pts([2500, 1]),
-    stamina: pts([2500, 1]),
-    memory: pts([2500, 1]),
-  })
-  const step = Object.fromEntries(skills.map((s) => [s.key, s.step]))
-  assert.deepEqual(step, { stamina: 0, tenacity: 5000, memory: 0 })
-
-  // No window (raw curves): nothing to step over.
-  const [raw] = prepareSkills({ speed: 1, tenacity: pts([2500, 1]) })
-  assert.equal(raw.step, 0)
-})
-
 test('endTime is the last point of any curve', () => {
   const skills = prepareSkills({ speed: 1, stamina: pts([0, 1], [5000, 2]), agility: pts([0, 1], [8000, 1]) })
   assert.equal(endTime(skills), 8000)
-})
-
-test('toSteps makes a plateau of every window', () => {
-  assert.deepEqual(toSteps(pts([2500, 1], [7500, 0]), 5000), pts([0, 1], [5000, 1], [5000, 0], [10000, 0]))
-  assert.deepEqual(toSteps([], 5000), [])
 })
 
 test('valueNear is the value of the nearest point', () => {

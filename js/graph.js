@@ -4,7 +4,7 @@
 /** Skills in drawing order with their colours. */
 export const SKILLS = [
   { key: 'stamina', label: 'Stamina', color: '#ef5350' },
-  { key: 'tenacity', label: 'Tenacity', color: '#ff9800', step: true },
+  { key: 'tenacity', label: 'Tenacity', color: '#ff9800' },
   { key: 'agility', label: 'Agility', color: '#fdd835' },
   { key: 'precision', label: 'Precision', color: '#9ccc65' },
   { key: 'reading', label: 'Reading', color: '#26c6da' },
@@ -48,14 +48,11 @@ export function normalizeMods(name) {
  * on this map (accuracy at 1000 while the others peak lower: 1000 is the full
  * height for all of them), so the lines stay comparable and a skill that is
  * hardly there stays a low line. `top` is a skill's own peak on that scale (1
- * for the strongest skill), which is what its line fades against. `step` is
- * the width of a window in ms for the skills that are on or off (tenacity: a
- * stream, then none) and are drawn as steps; 0 for the others. Skills without
- * a curve (or with a curve of zeros) are left out.
+ * for the strongest skill), which is what its line fades against. Skills
+ * without a curve (or with a curve of zeros) are left out.
  */
 export function prepareSkills(response) {
   const speed = response?.speed > 0 ? response.speed : 1
-  const window = response?.window > 0 ? response.window : 0
 
   const found = []
   let highest = 0
@@ -75,7 +72,6 @@ export function prepareSkills(response) {
     ...skill,
     peak,
     top: peak / highest,
-    step: skill.step ? window : 0,
     points: raw.map((p) => ({ time: p.time * speed, value: p.value / highest })),
   }))
 }
@@ -85,19 +81,6 @@ export function endTime(skills) {
   let end = 0
   for (const s of skills) end = Math.max(end, s.points[s.points.length - 1].time)
   return end
-}
-
-/**
- * Turns the points of windows (each in the middle of a window `width` ms wide)
- * into a step line: every window is a plateau of its value.
- */
-export function toSteps(points, width) {
-  const half = width / 2
-  const out = []
-  for (const p of points) {
-    out.push({ time: p.time - half, value: p.value }, { time: p.time + half, value: p.value })
-  }
-  return out
 }
 
 /**
